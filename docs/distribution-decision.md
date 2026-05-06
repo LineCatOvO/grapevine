@@ -1147,4 +1147,266 @@ jobs:
 
 ---
 
+## 11. 官方构建产物可访问性与直接下载更新可行性
+
+### 11.1 各组件官方构建产物清单
+
+| 组件 | 官方构建来源 | 格式 | Android ARM64 可用 | 公开访问 | 更新频率 |
+|------|------------|------|:-:|:-:|:-:|
+| **Wine** | [Kron4ek/Wine-Builds](https://github.com/Kron4ek/Wine-Builds/releases) | tar.xz | ⚠️ 仅 x86_64/amd64 | ✅ GitHub Releases | 每 2 周 |
+| **Wine (Android)** | [GameNative/proton-wine](https://github.com/GameNative/proton-wine/releases) | .wcp / .wcp.xz | ✅ arm64ec + x86_64 | ✅ GitHub Releases | 跟随 Proton 版本 |
+| **Proton** | [ValveSoftware/Proton](https://github.com/ValveSoftware/Proton/releases) | 整体 tar | ❌ 仅 x86_64 | ✅ GitHub Releases | 跟随 Steam 更新 |
+| **Proton (Android)** | [GameNative/proton-wine](https://github.com/GameNative/proton-wine/releases) | .wcp / .wcp.xz | ✅ arm64ec + x86_64 | ✅ GitHub Releases | 社区驱动 |
+| **Box64** | [ptitSeb/box64/releases](https://github.com/ptitSeb/box64/releases) | 源码 tar.gz | ⚠️ 需自行编译 | ✅ GitHub Releases | ~每 2 月 |
+| **Box64 (预编译)** | [ryanfortner/box64-debs](https://ryanfortner.github.io/box64-debs/) | .deb | ✅ box64-android | ✅ APT 仓库 + GitHub | 每日自动构建 |
+| **Box64 (每日构建)** | [fabricatorsltd/box64](https://github.com/fabricatorsltd/box64/releases) | .deb | ✅ arm64 | ✅ GitHub Releases | 每日自动构建 |
+| **Box86** | [ptitSeb/box86/releases](https://github.com/ptitSeb/box86/releases) | 源码 tar.gz | ⚠️ 需自行编译 | ✅ GitHub Releases | ~每 2 月 |
+| **Box86 (预编译)** | [ryanfortner/box86-debs](https://github.com/ryanfortner/box86-debs) | .deb | ✅ box86-android | ✅ APT 仓库 + GitHub | 每日自动构建 |
+| **DXVK** | [doitsujin/dxvk/releases](https://github.com/doitsujin/dxvk/releases) | tar.gz (x32+x64 DLL) | ✅ 平台无关 DLL | ✅ GitHub Releases | ~每月 |
+| **DXVK (WCP)** | [Winlator-WCP-Collections](https://github.com/Nick088Official/Winlator-WCP-Collections) | .wcp | ✅ Winlator 格式 | ✅ GitHub Releases | 跟随上游 |
+| **DXVK (Nightly WCP)** | [Xnick417x/Winlator-Bionic-Nightly-wcp](https://github.com/Xnick417x/Winlator-Bionic-Nightly-wcp) | .wcp | ✅ Winlator 格式 | ✅ content.json API | 每日自动构建 |
+| **VKD3D-Proton** | [HansKristian-Work/vkd3d-proton/releases](https://github.com/HansKristian-Work/vkd3d-proton/releases) | tar.gz (x32+x64 DLL) | ✅ 平台无关 DLL | ✅ GitHub Releases | ~每 2 月 |
+| **VKD3D-Proton (WCP)** | [Winlator-WCP-Collections](https://github.com/Nick088Official/Winlator-WCP-Collections) | .wcp | ✅ Winlator 格式 | ✅ GitHub Releases | 跟随上游 |
+| **Mesa (Turnip/VirGL/Zink)** | [Xnick417x/Winlator-Bionic-Nightly-wcp](https://github.com/Xnick417x/Winlator-Bionic-Nightly-wcp) | .wcp | ✅ arm64 | ✅ content.json API | 每日自动构建 |
+| **FEX-Emu** | [Winlator-WCP-Collections](https://github.com/Nick088Official/Winlator-WCP-Collections) | .wcp | ✅ Winlator 格式 | ✅ GitHub Releases | 跟随上游 |
+
+### 11.2 关键发现
+
+#### 11.2.1 大部分组件有官方公开构建，可直接下载
+
+**结论：是的，几乎所有组件都有官方或社区维护的公开构建产物，可以直接下载到项目内更新。**
+
+但需要注意以下分类：
+
+**可直接使用的构建（Android ARM64 原生）**：
+
+| 组件 | 来源 | 格式 | 直接可用 |
+|------|------|------|:-:|
+| Wine/Proton (Android) | GameNative/proton-wine | .wcp | ✅ |
+| Box64 | ryanfortner/box64-debs | .deb | ✅ (需解压) |
+| Box86 | ryanfortner/box86-debs | .deb | ✅ (需解压) |
+| DXVK | doitsujin/dxvk | tar.gz | ✅ (DLL 平台无关) |
+| VKD3D-Proton | HansKristian-Work/vkd3d-proton | tar.gz | ✅ (DLL 平台无关) |
+| Mesa 驱动 | Xnick417x Nightly | .wcp | ✅ |
+
+**不可直接使用的构建（需转换或重新打包）**：
+
+| 组件 | 来源 | 问题 | 解决方案 |
+|------|------|------|----------|
+| Wine (Kron4ek) | Kron4ek/Wine-Builds | 仅 x86_64，非 Android 构建 | 使用 GameNative 版本 |
+| Proton (Valve) | ValveSoftware/Proton | 仅 x86_64，含 Steam 依赖 | 使用 GameNative 版本 |
+| Box64 (ptitSeb) | ptitSeb/box64 | 仅源码 | 使用 ryanfortner 预编译版 |
+
+#### 11.2.2 WCP 格式是 Android 生态的事实标准
+
+Winlator CMOD 社区已建立了成熟的 WCP (Winlator Content Package) 分发生态：
+
+- **WCP 格式**：XZ/Zstd 压缩包 + `profile.json` 清单文件
+- **content.json API**：Winlator 通过远程 JSON 索引发现和下载可用组件
+- **Winlator-WCP-Toolkit**：自动化工具，可将上游构建转换为 WCP 格式
+- **Winlator-WCP-Collections**：预转换的 WCP 组件集合
+- **Xnick417x Nightly**：每日自动构建 DXVK/Mesa/Box64 等组件的 WCP 包
+
+**Grapevine 可以直接复用这个生态**，无需从零构建组件分发系统。
+
+#### 11.2.3 GameNative 是 Wine/Proton Android 构建的权威来源
+
+GameNative/proton-wine 是目前唯一提供 Android ARM64 构建的 Wine/Proton 仓库：
+
+- 支持 Proton 11.0 ARM64EC + x86_64
+- 同时输出 Proton 类型 (.wcp) 和 Wine 类型 (.wcp.xz)
+- 支持 Android SDK 28 和 SDK 35
+- 通过 GitHub Actions 自动构建和发布
+- 已被 Winlator CMOD、Ludashi 等项目采用
+
+### 11.3 Grapevine 实现直接下载更新的技术方案
+
+#### 11.3.1 方案概述
+
+Grapevine 可以实现与 Winlator CMOD 类似的组件在线更新功能，核心流程：
+
+```
+用户点击"检查更新"
+  → Grapevine 下载 content.json 索引
+  → 解析可用组件列表和版本
+  → 与本地已安装版本对比
+  → 显示可更新组件列表
+  → 用户选择更新
+  → 下载 .wcp / tar.xz 组件包
+  → 校验 SHA256
+  → 解压到组件目录
+  → 更新 registry.yml
+  → 完成
+```
+
+#### 11.3.2 组件索引设计
+
+Grapevine 应维护自己的组件索引（兼容 WCP 生态）：
+
+```json
+{
+  "version": 2,
+  "contents": [
+    {
+      "name": "Wine 11.5 (Staging)",
+      "type": "wine",
+      "version": "11.5",
+      "source": "kron4ek",
+      "arch": ["x86_64", "arm64ec"],
+      "downloadUrl": "https://github.com/GameNative/proton-wine/releases/download/...",
+      "sha256": "abc123...",
+      "size": 104857600,
+      "license": "LGPL-2.1+"
+    },
+    {
+      "name": "Proton 11.0 Experimental",
+      "type": "proton",
+      "version": "11.0-1",
+      "source": "gamenative",
+      "arch": ["x86_64", "arm64ec"],
+      "downloadUrl": "https://github.com/GameNative/proton-wine/releases/download/...",
+      "sha256": "def456...",
+      "size": 314572800,
+      "license": "BSD-3-Clause / LGPL-2.1+"
+    },
+    {
+      "name": "Box64 0.4.2",
+      "type": "box64",
+      "version": "0.4.2",
+      "source": "ryanfortner",
+      "arch": ["arm64"],
+      "downloadUrl": "https://github.com/ryanfortner/box64-debs/raw/master/debian/box64-android_...",
+      "sha256": "ghi789...",
+      "size": 5242880,
+      "license": "MIT"
+    },
+    {
+      "name": "DXVK 2.4.1",
+      "type": "dxvk",
+      "version": "2.4.1",
+      "source": "doitsujin",
+      "arch": ["any"],
+      "downloadUrl": "https://github.com/doitsujin/dxvk/releases/download/v2.4.1/dxvk-2.4.1.tar.gz",
+      "sha256": "jkl012...",
+      "size": 15728640,
+      "license": "zlib"
+    },
+    {
+      "name": "VKD3D-Proton 2.14.1",
+      "type": "vkd3d",
+      "version": "2.14.1",
+      "source": "hansKristian",
+      "arch": ["any"],
+      "downloadUrl": "https://github.com/HansKristian-Work/vkd3d-proton/releases/download/v2.14.1/vkd3d-proton-2.14.1.tar.gz",
+      "sha256": "mno345...",
+      "size": 10485760,
+      "license": "LGPL-2.1+ / MIT"
+    },
+    {
+      "name": "Mesa Turnip 25.1.0",
+      "type": "mesa",
+      "variant": "turnip",
+      "version": "25.1.0",
+      "source": "xnick417x",
+      "arch": ["arm64"],
+      "downloadUrl": "https://github.com/Xnick417x/Winlator-Bionic-Nightly-wcp/releases/download/...",
+      "sha256": "pqr678...",
+      "size": 20971520,
+      "license": "MIT / SGI-B-2.0"
+    }
+  ]
+}
+```
+
+#### 11.3.3 多源下载策略
+
+Grapevine 应支持从多个来源下载同一组件，以提高可用性：
+
+```yaml
+# registry.yml 中的下载源配置
+mirrors:
+  wine:
+    - name: "GameNative (Primary)"
+      url: "https://github.com/GameNative/proton-wine/releases"
+    - name: "Kron4ek (Fallback)"
+      url: "https://github.com/Kron4ek/Wine-Builds/releases"
+      note: "仅 x86_64，需 Box64 翻译"
+  box64:
+    - name: "ryanfortner (Primary)"
+      url: "https://ryanfortner.github.io/box64-debs/"
+    - name: "fabricatorsltd (Nightly)"
+      url: "https://github.com/fabricatorsltd/box64/releases"
+  dxvk:
+    - name: "doitsujin (Official)"
+      url: "https://github.com/doitsujin/dxvk/releases"
+    - name: "Xnick417x (WCP Nightly)"
+      url: "https://github.com/Xnick417x/Winlator-Bionic-Nightly-wcp/releases"
+```
+
+#### 11.3.4 格式适配层
+
+不同来源的组件使用不同的打包格式，Grapevine 需要一个格式适配层：
+
+| 来源格式 | 适配操作 | 复杂度 |
+|---------|---------|:-:|
+| .wcp (Winlator) | 解压 XZ/Zstd → 读取 profile.json → 提取 bin/lib/share | 🟢 低 |
+| .wcp.xz (Winlator Wine) | 解压 XZ → 同上 | 🟢 低 |
+| tar.xz (Kron4ek Wine) | 解压 → 直接使用 bin/lib/share 结构 | 🟢 低 |
+| tar.gz (DXVK/VKD3D) | 解压 → 复制 x32/x64 DLL 到 Wine prefix | 🟢 低 |
+| .deb (Box64) | 解压 ar → 解压 data.tar → 提取 /usr/bin/box64 | 🟡 中 |
+
+#### 11.3.5 实现可行性评估
+
+| 功能 | 技术可行性 | 实现难度 | 依赖 |
+|------|:-:|:-:|------|
+| 从 GitHub Releases 下载组件 | ✅ | 🟢 低 | HTTP 客户端 |
+| 解析 content.json 索引 | ✅ | 🟢 低 | JSON 解析 |
+| 校验 SHA256 | ✅ | 🟢 低 | 标准库 |
+| 解压 .wcp / tar.xz / tar.gz | ✅ | 🟢 低 | libarchive / zlib / xz |
+| 解压 .deb | ✅ | 🟡 中 | ar 解压 + tar 解压 |
+| 版本对比和更新提示 | ✅ | 🟢 低 | 语义版本解析 |
+| 多源下载和故障转移 | ✅ | 🟡 中 | 下载队列管理 |
+| 下载进度显示 | ✅ | 🟢 低 | Android DownloadManager |
+| 断点续传 | ✅ | 🟡 中 | HTTP Range 请求 |
+| 增量更新（仅下载差异） | ⚠️ | 🔴 高 | bsdiff/delta 方案 |
+
+### 11.4 Winlator 已有的成熟实现可参考
+
+Winlator CMOD 已经实现了完整的组件在线更新功能：
+
+1. **Settings → Downloadable Content URL**：用户可自定义组件源 URL
+2. **content.json API**：远程索引发现可用组件
+3. **Driver Manager URL**：图形驱动（Turnip/VirGL/Zink）独立源
+4. **一键安装 .wcp 组件**：下载 → 校验 → 解压 → 注册
+5. **组件版本管理**：安装多个版本，按容器选择使用
+
+**Grapevine 可以直接复用 WCP 生态的组件**，无需自己构建所有组件。只需要：
+
+1. 实现 WCP 格式的解析和安装
+2. 维护自己的 content.json 索引（或直接兼容 Winlator 的索引格式）
+3. 在 APK 内提供组件管理器 GUI
+
+### 11.5 结论
+
+**所有核心组件都有官方或社区维护的公开构建产物，Grapevine 完全可以实现直接下载官方构建到项目内更新。**
+
+关键要点：
+
+1. **Wine/Proton Android 构建**：GameNative/proton-wine 提供公开的 .wcp 格式构建，可直接下载使用
+2. **Box64/Box86 预编译**：ryanfortner 每日自动构建 Android 版本，.deb 格式可直接下载
+3. **DXVK/VKD3D-Proton**：官方提供平台无关的 DLL 包，可直接下载
+4. **Mesa 驱动**：Xnick417x Nightly 每日自动构建 WCP 格式
+5. **WCP 生态**：Winlator CMOD 社区已建立成熟的组件分发生态，Grapevine 可直接复用
+
+**Grapevine 不需要自己构建任何组件**，只需实现下载→校验→解压→注册的流程，即可实现组件在线更新。这与 Winlator CMOD 的实现方式完全一致，技术成熟度已验证。
+
+**实现优先级**：
+
+1. Phase 1：支持从 GameNative 下载 Wine/Proton .wcp 包
+2. Phase 2：支持从 ryanfortner 下载 Box64 .deb 包
+3. Phase 3：支持从官方下载 DXVK/VKD3D tar.gz 包
+4. Phase 4：兼容 Winlator content.json 索引格式，复用 WCP 生态
+
+---
+
 *文档结束*
