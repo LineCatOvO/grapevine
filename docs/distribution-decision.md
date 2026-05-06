@@ -759,4 +759,392 @@ Copyright (C) 2026 Grapevine Contributors
 
 ---
 
+## 10. 组件本地动态构建可行性分析
+
+### 10.1 问题定义
+
+Grapevine 的技术灵活性取决于能否快速适配上游组件的新版本。当前方案依赖预编译二进制分发（从镜像源下载），存在以下限制：
+
+- 新版本发布后需要等待社区或 Grapevine 团队提供预编译包
+- 无法针对特定设备/内核进行优化编译
+- 无法自由应用自定义补丁
+- 对上游发布节奏缺乏主动权
+
+如果 Grapevine 能在用户设备上从源码动态构建最新版本，将彻底解决这些问题。
+
+### 10.2 各组件构建复杂度分级
+
+根据构建依赖、构建时间、交叉编译难度三个维度，将 Grapevine 依赖的组件分为四个等级：
+
+#### Level 0：可在 Android 设备本地构建（可行）
+
+| 组件 | 构建系统 | 依赖 | 典型构建时间 (4核 ARM64) | 产物大小 | 本地构建难度 |
+|------|---------|------|:-:|:-:|:-:|
+| Box64 | CMake + Make | gcc/cmake, 无外部依赖 | 5-15 分钟 | ~5 MB | 🟢 极低 |
+| Box86 | CMake + Make | gcc/cmake, 无外部依赖 | 5-15 分钟 | ~4 MB | 🟢 极低 |
+
+**Box64/Box86 是唯一真正可以在 Android 设备本地构建的组件**。它们：
+- 只需 cmake + gcc，无外部库依赖
+- 代码量小（~50K 行 C），编译快
+- 支持按设备 SoC 选择优化目标（SD845/RK3588/Generic 等）
+- 已有 Termux 包构建脚本可直接使用
+
+#### Level 1：需要交叉编译环境（中等难度）
+
+| 组件 | 构建系统 | 依赖 | 典型构建时间 (x86_64 主机) | 产物大小 | 本地构建难度 |
+|------|---------|------|:-:|:-:|:-:|
+| DXVK | Meson + Ninja | MinGW-w64, glslang | 5-10 分钟 | ~15 MB | 🟡 中 |
+| VKD3D-Proton | Meson + Ninja | MinGW-w64, glslang, SPIRV-Headers | 10-20 分钟 | ~10 MB | 🟡 中 |
+
+**特点**：
+- DXVK 和 VKD3D-Proton 编译为 Windows DLL（使用 MinGW 交叉编译），不依赖目标平台
+- 构建依赖相对简单（MinGW-w64 + Meson + glslang）
+- 但在 Android 上运行 MinGW 交叉编译工具链需要完整的 glibc 环境
+- 理论上可在 PRoot rootfs 中构建，但性能损耗严重
+
+#### Level 2：需要复杂交叉编译环境（高难度）
+
+| 组件 | 构建系统 | 依赖 | 典型构建时间 (x86_64 主机) | 产物大小 | 本地构建难度 |
+|------|---------|------|:-:|:-:|:-:|
+| Wine | Autoconf + Make | 100+ 依赖库 | 30-60 分钟 | ~100 MB | 🔴 高 |
+| PRoot | Make | gcc, libtalloc | 2-5 分钟 | ~1 MB | 🟡 中 |
+
+**Wine 构建的挑战**：
+- 依赖 100+ 个开发库（freetype, libpng, libjpeg, gstreamer, v4l2, cups, etc.）
+- 需要先构建原生 wine-tools，再交叉编译目标架构
+- GameNative 的 Android 构建流程需要：Android NDK r27d + LLVM MinGW + termuxfs
+- 构建过程需要 ~40 分钟（GitHub Actions aarch64 runner，含缓存）
+- 在 Android 设备上构建需要完整的编译工具链和所有 -dev 包
+
+#### Level 3：需要容器化构建环境（极高难度）
+
+| 组件 | 构建系统 | 依赖 | 典型构建时间 (x86_64 主机) | 产物大小 | 本地构建难度 |
+|------|---------|------|:-:|:-:|:-:|
+| Proton | Docker/Podman + Make | Proton SDK 容器, Wine, DXVK, VKD3D, FAudio, gstreamer, etc. | 1-3 小时 | ~300 MB | 🔴🔴 极高 |
+
+**Proton 构建的挑战**：
+- **强制要求 Docker/Podman**：Proton 设计为在 Proton SDK 容器内构建，无法脱离容器
+- **NixOS 社区的经验**：NixOS 社区在 2025 年 5 月提出将 Proton 打包为从源码构建的请求（nixpkgs#409340），至今未能实现，核心障碍正是容器化构建系统
+- **GameNative 的解决方案**：GameNative/proton-wine 项目通过 GitHub Actions 实现了 Proton Wine 的 Android 构建，但这是在 x86_64 云端 runner 上交叉编译完成的
+- **构建步骤**：
+  1. 下载 termuxfs（~200MB）
+  2. 安装 Android NDK r27d（~1.5GB）
+  3. 安装 LLVM MinGW 工具链（~500MB）
+  4. 构建 wine-tools（step 0）
+  5. 构建 sysvshm 库（aarch64）
+  6. 配置并编译 Proton Wine（~23 分钟在云端）
+  7. 打包为 WCP 格式（~14 分钟）
+- **总构建时间**：~40 分钟（GitHub Actions aarch64 runner，含缓存命中）
+- **Android 设备上完全不可行**：Docker/Podman 无法在非 root Android 上运行
+
+### 10.3 Android 设备本地构建的硬件限制
+
+| 限制 | 典型旗舰手机 | 构建需求 | 差距 |
+|------|:-:|:-:|:-:|
+| CPU | 8 核 ARM64 (3GHz) | 4+ 核 x86_64 (3GHz+) | 指令集不同，PRoot 翻译损耗 30-50% |
+| RAM | 8-16 GB | 16+ GB (Wine/Proton) | 不足，链接阶段 OOM 风险高 |
+| 存储 | 128-512 GB UFS | 10+ GB 临时空间 | 足够 |
+| 散热 | 被动散热 | 持续高负载 30+ 分钟 | 严重降频，构建时间翻倍 |
+| 电池 | 4000-5000 mAh | 持续高负载 30+ 分钟 | 消耗 30-50% 电量 |
+
+**结论**：即使在旗舰手机上，Wine/Proton 的本地构建也因 RAM 不足、散热降频、Docker 不可用等原因**不可行**。Box64/Box86 是唯一可在设备本地构建的组件。
+
+### 10.4 三种组件更新策略对比
+
+#### 策略 A：纯预编译分发（当前方案）
+
+```
+上游发布新版本 → Grapevine 团队构建 → 上传到镜像源 → 用户下载更新
+```
+
+| 优点 | 缺点 |
+|------|------|
+| 用户体验好（下载即用） | 新版本延迟取决于团队构建速度 |
+| 无需用户设备编译 | 无法针对特定设备优化 |
+| 构建质量可控 | 用户无法自定义补丁 |
+
+#### 策略 B：CI/CD 云端自动构建
+
+```
+上游发布新版本 → GitHub Actions 自动触发构建 → 构建产物发布到 Release → 用户下载更新
+```
+
+| 优点 | 缺点 |
+|------|------|
+| 新版本延迟极短（自动触发） | GitHub Actions 免费额度有限 |
+| 构建环境标准化 | 需要为每个组件维护 workflow |
+| 可同时构建多架构 | 依赖 GitHub 基础设施 |
+| 可自动测试构建产物 | 大型构建（Proton）消耗大量 CI 时间 |
+
+#### 策略 C：混合策略（推荐）
+
+```
+组件分类:
+  Level 0 (Box64/Box86) → 支持本地构建 + 预编译包
+  Level 1-2 (DXVK/Wine) → CI/CD 云端自动构建 + 预编译包
+  Level 3 (Proton) → CI/CD 云端自动构建 + 预编译包
+  自定义补丁 → 用户提交 → CI/CD 构建 → 下载
+```
+
+### 10.5 推荐方案：CI/CD 云端自动构建 + 可选本地构建
+
+#### 10.5.1 核心架构
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Grapevine 组件仓库                      │
+│  (GitHub Repository + GitHub Actions + GitHub Releases)  │
+│                                                          │
+│  ┌──────────┐  触发  ┌──────────────┐  产物  ┌────────┐ │
+│  │ 上游      │──────→│ GitHub Actions│──────→│ Release│ │
+│  │ 新版本    │       │ 自动构建      │       │ 页面   │ │
+│  └──────────┘       └──────────────┘       └────┬───┘ │
+│       ↑                   ↑                      │      │
+│       │              ┌────┴────┐                │      │
+│  定时检查/           │ 手动触发 │                │      │
+│  webhook             │ (自定义  │                │      │
+│                      │  补丁)  │                │      │
+│                      └─────────┘                │      │
+└──────────────────────────────────────────────────┼──────┘
+                                                   │
+                                                   ↓
+┌──────────────────────────────────────────────────────────┐
+│                    Grapevine APK                          │
+│                                                          │
+│  ┌──────────────────┐  下载  ┌──────────────────────┐   │
+│  │ 组件管理器 GUI    │←──────│ 镜像源 / GitHub Release│   │
+│  │                  │       └──────────────────────┘   │
+│  │ • 查看可用版本    │                                    │
+│  │ • 一键更新组件    │       ┌──────────────────────┐   │
+│  │ • 切换 Wine/Proton│←─────│ 本地构建 (Box64 only) │   │
+│  │ • 应用自定义补丁  │       └──────────────────────┘   │
+│  └──────────────────┘                                    │
+└──────────────────────────────────────────────────────────┘
+```
+
+#### 10.5.2 CI/CD 构建流水线设计
+
+**Wine 构建流水线**（参考 GameNative/proton-wine）：
+
+```yaml
+# .github/workflows/build-wine.yml
+name: Build Wine
+on:
+  workflow_dispatch:
+    inputs:
+      wine_version:
+        description: 'Wine version (e.g. 9.4)'
+        required: true
+      wine_source:
+        description: 'Source (kron4ek/proton/valve)'
+        default: 'kron4ek'
+  schedule:
+    - cron: '0 0 * * 1'  # 每周一检查新版本
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up build environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git wget curl \
+            flex bison gettext autoconf automake libtool pkg-config \
+            mingw-w64 gcc-multilib g++-multilib
+      - name: Download termuxfs
+        run: |
+          wget https://github.com/GameNative/termux-on-gha/releases/download/build-20260218/termuxfs-${{ matrix.arch }}.tar.gz
+          tar xf termuxfs-${{ matrix.arch }}.tar.gz
+      - name: Cache Android NDK
+        uses: actions/cache@v4
+        with:
+          key: android-ndk-r27d
+          path: ~/android-ndk-r27d
+      - name: Build Wine
+        run: ./build-scripts/build-step-${{ matrix.arch }}.sh
+      - name: Package and Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag: wine-${{ inputs.wine_version }}
+          files: |
+            wine-*.wcp
+            wine-*.wcp.xz
+```
+
+**Proton 构建流水线**（参考 GameNative/proton-wine PR#15）：
+
+```yaml
+# .github/workflows/build-proton.yml
+name: Build Proton Wine
+on:
+  workflow_dispatch:
+    inputs:
+      proton_branch:
+        description: 'Proton branch (e.g. proton_11.0)'
+        default: 'proton_11.0'
+  schedule:
+    - cron: '0 0 * * 1'  # 每周一检查新版本
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64]
+        sdk: [28, 35]  # Android SDK 28 和 35
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: GameNative/proton-wine
+          ref: ${{ inputs.proton_branch }}
+          submodules: recursive
+      - name: Build Proton Wine
+        run: |
+          # 参考 GameNative/proton-wine 的构建流程
+          # 总构建时间: ~40 分钟 (aarch64, 含缓存)
+      - name: Package and Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag: proton-${{ inputs.proton_branch }}-sdk${{ matrix.sdk }}
+          files: |
+            proton-*.wcp
+            proton-wine-*.wcp.xz
+```
+
+**Box64 本地构建支持**（在 Grapevine APK 内）：
+
+```bash
+# grapevine-core/lib/component/build-box64.sh
+build_box64_local() {
+    local version="$1"
+    local target="$2"  # SD845/RK3588/Generic
+    local build_dir="${GRAPEVINE_HOME}/build/box64-${version}"
+
+    if ! command -v cmake &>/dev/null || ! command -v gcc &>/dev/null; then
+        print_error "构建 Box64 需要 cmake 和 gcc，请先安装"
+        print_hint "运行: grapevine component install-build-deps"
+        return 1
+    fi
+
+    git clone --depth 1 --branch "v${version}" \
+        https://github.com/ptitSeb/box64.git "${build_dir}/src"
+
+    mkdir -p "${build_dir}/build" && cd "${build_dir}/build"
+    cmake ../src -D${target}=1 -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+        -DCMAKE_INSTALL_PREFIX="${GRAPEVINE_HOME}/components/box64/${version}"
+    make -j"$(nproc)"
+    make install
+
+    grapevine component register box64 "${version}" "${GRAPEVINE_HOME}/components/box64/${version}"
+}
+```
+
+#### 10.5.3 组件版本自动跟踪
+
+```yaml
+# .github/workflows/track-upstream.yml
+name: Track Upstream Releases
+on:
+  schedule:
+    - cron: '0 6 * * *'  # 每天 06:00 UTC 检查
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      wine_new: ${{ steps.wine.outputs.new }}
+      box64_new: ${{ steps.box64.outputs.new }}
+      proton_new: ${{ steps.proton.outputs.new }}
+    steps:
+      - name: Check Wine releases
+        id: wine
+        run: |
+          latest=$(curl -s https://api.github.com/repos/Kron4ek/Wine-Builds/releases/latest | jq -r .tag_name)
+          current=$(cat registry/wine.version)
+          if [ "$latest" != "$current" ]; then
+            echo "new=true" >> $GITHUB_OUTPUT
+            echo "version=$latest" >> $GITHUB_OUTPUT
+          fi
+      - name: Check Box64 releases
+        id: box64
+        run: |
+          latest=$(curl -s https://api.github.com/repos/ptitSeb/box64/releases/latest | jq -r .tag_name)
+          current=$(cat registry/box64.version)
+          if [ "$latest" != "$current" ]; then
+            echo "new=true" >> $GITHUB_OUTPUT
+            echo "version=$latest" >> $GITHUB_OUTPUT
+          fi
+      - name: Check Proton releases
+        id: proton
+        run: |
+          latest=$(curl -s https://api.github.com/repos/ValveSoftware/Proton/releases/latest | jq -r .tag_name)
+          current=$(cat registry/proton.version)
+          if [ "$latest" != "$current" ]; then
+            echo "new=true" >> $GITHUB_OUTPUT
+            echo "version=$latest" >> $GITHUB_OUTPUT
+          fi
+
+  trigger-builds:
+    needs: check
+    if: needs.check.outputs.wine_new == 'true' || needs.check.outputs.box64_new == 'true' || needs.check.outputs.proton_new == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Wine build
+        if: needs.check.outputs.wine_new == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'build-wine.yml',
+              ref: 'main',
+              inputs: { wine_version: '${{ needs.check.outputs.wine_version }}' }
+            })
+      - name: Trigger Box64 build
+        if: needs.check.outputs.box64_new == 'true'
+        run: echo "Trigger Box64 build workflow"
+      - name: Trigger Proton build
+        if: needs.check.outputs.proton_new == 'true'
+        run: echo "Trigger Proton build workflow"
+```
+
+### 10.6 技术灵活性评估
+
+| 灵活性维度 | 纯预编译分发 | CI/CD + 可选本地构建 | 纯本地构建 |
+|----------|:-:|:-:|:-:|
+| 新版本跟进速度 | ⚠️ 天-周级 | ✅ 小时级 | ❌ 不可行 (Wine/Proton) |
+| 自定义补丁 | ❌ 不支持 | ✅ 提交 PR → CI 构建 | ⚠️ 仅 Box64 |
+| 设备特定优化 | ❌ 通用构建 | ⚠️ 按架构构建 | ✅ Box64 按 SoC 优化 |
+| 离线可用性 | ✅ 下载后离线 | ✅ 下载后离线 | ✅ 完全离线 |
+| 对上游依赖 | ⚠️ 依赖社区预编译包 | ✅ 直接从源码构建 | ❌ 不可行 (Wine/Proton) |
+| 维护成本 | 🟡 中 | 🟡 中 | 🟢 低 (仅 Box64) |
+| 用户体验 | ✅ 下载即用 | ✅ 下载即用 + 高级选项 | ❌ 构建耗时且易失败 |
+
+### 10.7 结论
+
+**Proton/Wine 的本地动态构建在 Android 设备上不可行**，核心障碍：
+
+1. **Proton 强制要求 Docker/Podman**，Android 非 root 环境无法运行
+2. **Wine 构建需要 100+ 依赖库**，Android 设备 RAM 不足以支撑链接阶段
+3. **构建时间过长**（Proton 1-3 小时，Wine 30-60 分钟），手机散热无法承受
+
+**但 CI/CD 云端自动构建可以实现同等灵活性**：
+
+1. 上游新版本发布 → 自动触发构建 → 小时级可用
+2. 用户提交自定义补丁 → CI 构建 → 下载安装
+3. 多架构并行构建 → x86_64 + aarch64 同时产出
+4. 构建缓存策略 → 增量构建加速
+
+**Box64/Box86 是唯一支持本地构建的组件**，可在 Grapevine APK 内提供"从源码构建"选项，按设备 SoC 优化性能。
+
+**最终推荐**：采用混合策略（策略 C），以 CI/CD 云端自动构建为主，Box64 本地构建为辅，实现最大技术灵活性。
+
+---
+
 *文档结束*
