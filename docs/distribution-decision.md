@@ -1609,4 +1609,284 @@ Grapevine 不是 Winlator 的替代品，而是 Winlator 的上层编排工具�
 
 ---
 
+## 13. Mali GPU 兼容性分析与 Grapevine 的差异化机会
+
+### 13.1 问题现状
+
+Winlator CMOD 主要为 Snapdragon + Adreno 优化，Mali GPU（MediaTek/Exynos/Unisoc）用户面临严重的图形兼容性问题：
+
+| 问题 | 原因 | 影响 |
+|------|------|------|
+| Turnip 不可用 | Turnip 是 Mesa 的 Adreno 专用 Vulkan 驱动，不支持 Mali | Mali 用户无法使用最高性能的 Vulkan 渲染路径 |
+| 原生 Vulkan 驱动缺陷 | ARM 闭源 Mali Vulkan 驱动缺少关键扩展，DXVK/VKD3D 无法正常工作 | DX11/12 游戏基本不可运行 |
+| VirGL 性能低下 | VirGL 通过 OpenGL ES 间接渲染，仅支持 OpenGL 3.1 | DX9 时代游戏勉强可玩，帧率远低于 Adreno |
+| Zink 依赖 Vulkan | Zink (OpenGL→Vulkan) 需要可用的 Vulkan 驱动 | Mali 的闭源 Vulkan 驱动不兼容，Zink 不可用 |
+
+**实际体验对比**：
+
+| 场景 | Adreno (Turnip+DXVK) | Mali (VirGL+WineD3D) | 差距 |
+|------|---------------------|----------------------|------|
+| DX9 老游戏 (NFS MW 2005) | 60 FPS | 20-25 FPS | 2-3x |
+| DX11 游戏 (Skyrim) | 30-45 FPS | 基本不可运行 | ∞ |
+| DX12 游戏 | 15-30 FPS (VKD3D) | 不可运行 | ∞ |
+| 2D/旧应用 | 正常 | 正常 | 无 |
+
+### 13.2 现有解决方案及其局限
+
+#### 方案 1：VirGL（当前主流方案）
+
+```
+Windows App → Wine → WineD3D → OpenGL → VirGL → OpenGL ES → Mali GPU
+```
+
+- **优点**：通用，几乎所有 Mali 设备可用
+- **缺点**：性能极低，仅支持 OpenGL 3.1，DXVK 不可用
+- **现状**：Winlator Mali (Fcharan) 和 Winlator 官方均支持，但体验远不如 Adreno
+
+#### 方案 2：Gladio（Winlator v11 新增）
+
+```
+Windows App → Wine → WineD3D → OpenGL → Gladio → OpenGL ES → Mali GPU
+```
+
+- **优点**：Winlator v11.0 引入的实验性 OpenGL wrapper，通过 GLES 桥接
+- **缺点**：仍然是 OpenGL 路径，无法使用 DXVK/VKD3D 的 Vulkan 加速
+- **现状**：实验性功能，改善有限
+
+#### 方案 3：PanVK + DXVK（最有前景但尚未成熟）
+
+```
+Windows App → Wine → DXVK → Vulkan → PanVK → Mali GPU
+```
+
+- **优点**：与 Adreno 上的 Turnip+DXVK 路径等价，理论性能最高
+- **缺点**：PanVK 仍在开发中，仅在 Mali-G610 上达到 Vulkan 1.2 一致性
+- **现状**：Collabora 正在开发，Mesa 25.1+ 包含，但非生产就绪
+
+#### 方案 4：ARM 闭源 Vulkan 驱动 + DXVK
+
+```
+Windows App → Wine → DXVK → Vulkan → ARM Proprietary Driver → Mali GPU
+```
+
+- **优点**：使用厂商驱动，性能理论上最优
+- **缺点**：ARM 闭源驱动缺少 DXVK/VKD3D 所需的 Vulkan 扩展，兼容性差
+- **现状**：DXVK 已针对 ARM 闭源驱动做了 Tiler 模式优化，但扩展缺失问题无法绕过
+
+#### 方案 5：PanVKDriverPlugin（2026 年 5 月新出现）
+
+```
+系统 Vulkan 驱动 → PanVKDriverPlugin 替换 → Mesa PanVK v25.2.8
+```
+
+- **优点**：Android 应用，可替换系统 Vulkan 驱动为 Mesa PanVK，填补扩展缺失
+- **缺点**：需要 root 或 Shizuku 权限，仅支持部分 Mali 型号
+- **现状**：2026 年 5 月 1 日首次发布，非常早期
+
+### 13.3 Mali GPU 型号与驱动支持矩阵
+
+| Mali 型号 | 架构 | 常见设备 | ARM 闭源 Vulkan | Panfrost OpenGL | PanVK Vulkan | 推荐方案 |
+|-----------|------|---------|:-:|:-:|:-:|------|
+| Mali-G57 | Valhall (v9) | MediaTek Dimensity 800/820 | ⚠️ 扩展不全 | ✅ 3.1 | ❌ | VirGL |
+| Mali-G68 | Valhall (v9) | Samsung Exynos 1280 | ⚠️ 扩展不全 | ✅ 3.1 | ❌ | VirGL |
+| Mali-G710 | Valhall (v9) | MediaTek Dimensity 9000 | ⚠️ 扩展不全 | ✅ 3.1 | ❌ | VirGL + DXVK(部分) |
+| Mali-G610 | Valhall (v10) | MediaTek Dimensity 8100/9200 | ⚠️ 扩展不全 | ✅ 3.1 | ✅ 1.2 | **PanVK + DXVK** |
+| Mali-G310 | Valhall (v10) | 低端设备 | ⚠️ 扩展不全 | ✅ 3.1 | ⚠️ | VirGL |
+| Mali-G720 | 5th Gen (v12) | MediaTek Dimensity 9300 | ⚠️ 扩展不全 | ✅ 3.1 | ⚠️ 1.4 | PanVK(实验) + DXVK |
+| Mali-G725 | 5th Gen (v13) | 最新旗舰 | ⚠️ 扩展不全 | ✅ 3.1 | ⚠️ 1.4 | PanVK(实验) + DXVK |
+| Mali-G52 | Bifrost (v7) | 中低端设备 | ⚠️ 扩展不全 | ✅ 3.1 | ⚠️ 1.0 | VirGL |
+| Mali-T880 | Midgard (v5) | 旧设备 | ❌ | ✅ 3.1 | ❌ | VirGL |
+
+### 13.4 Grapevine 的差异化机会：Mali GPU 一等公民支持
+
+**这是 Grapevine 相对 Winlator CMOD 的第四个差异化特性，且可能是最有市场价值的。**
+
+理由：
+1. **Mali 设备市场占比巨大**：MediaTek 在 2025 年全球手机芯片市场份额超过 40%，Samsung Exynos 也有显著份额。这些设备几乎全部使用 Mali GPU
+2. **Winlator CMOD 对 Mali 的支持是二等公民**：仅有 VirGL（低性能）和 Gladio（实验性），没有 Vulkan 加速路径
+3. **用户痛点极强**：Mali 用户在 Reddit/Discord 上大量抱怨"我的设备不能用 Winlator"
+4. **WinlatorMali (Fcharan) 是唯一专注 Mali 的 fork**，但功能远不如 CMOD 丰富
+
+### 13.5 Grapevine 的 Mali GPU 技术方案
+
+#### 13.5.1 分层渲染策略
+
+Grapevine 应实现**GPU 自适应渲染路径**，根据设备 GPU 自动选择最优方案：
+
+```
+Grapevine GPU 检测与路径选择:
+
+1. 检测 GPU 类型 (Adreno / Mali / 其他)
+   │
+   ├─ Adreno → Turnip + DXVK (标准路径)
+   │
+   ├─ Mali (G610+) → PanVK + DXVK (Vulkan 加速路径)
+   │
+   ├─ Mali (G710/G57 等) → ARM 闭源 Vulkan + DXVK (Tiler 优化路径)
+   │                     或 Panfrost + Zink + DXVK (开源路径)
+   │
+   └─ Mali (旧型号/无 Vulkan) → Panfrost + VirGL (兼容路径)
+                              或 Gladio + WineD3D (OpenGL 路径)
+```
+
+#### 13.5.2 具体实现方案
+
+**路径 A：PanVK + DXVK（Mali-G610/G720/G725，最有前景）**
+
+```yaml
+# container.yml - Mali G610 + PanVK 配置
+graphics:
+  driver: panvk
+  dxvk_version: "2.4.1"
+  vulkan_icd: panvk
+environment:
+  VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/panvk_icd.aarch64.json
+  DXVK_STATE_CACHE_PATH: "${GRAPEVINE_HOME}/cache/dxvk-state-cache"
+  MESA_VK_WSI_PRESENT_MODE: fifo
+  dxvk.tilerMode: "true"
+  dxvk.textureMemoryBudget: "512"
+  dxvk.maxAnisotropy: "4"
+```
+
+**路径 B：ARM 闭源 Vulkan + DXVK Tiler 优化（Mali-G710 等）**
+
+```yaml
+# container.yml - Mali G710 + ARM Proprietary Vulkan 配置
+graphics:
+  driver: mali-vulkan
+  dxvk_version: "2.4.1"
+  vulkan_icd: mali
+environment:
+  VK_ICD_FILENAMES: /vendor/etc/vulkan/icd.d/mali_icd.json
+  DXVK_STATE_CACHE_PATH: "${GRAPEVINE_HOME}/cache/dxvk-state-cache"
+  dxvk.tilerMode: "true"
+  dxvk.enableGraphicsPipelineLibrary: "True"
+  dxvk.numCompilerThreads: "2"
+  dxvk.textureMemoryBudget: "512"
+  DXVK_FRAME_RATE: "30"
+```
+
+**路径 C：Panfrost + Zink + DXVK（开源全栈，兼容性优先）**
+
+```yaml
+# container.yml - Mali + Panfrost + Zink 配置
+graphics:
+  driver: panfrost-zink
+  dxvk_version: "2.4.1"
+environment:
+  MESA_LOADER_DRIVER_OVERRIDE: zink
+  VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lavapipe_icd.aarch64.json
+  MESA_GLSL_CACHE_DIR: "${GRAPEVINE_HOME}/cache/mesa-shader-cache"
+```
+
+**路径 D：VirGL + WineD3D（兜底方案，最大兼容性）**
+
+```yaml
+# container.yml - Mali + VirGL 兼容配置
+graphics:
+  driver: virgl
+  dxvk_version: null
+environment:
+  GALLIUM_DRIVER: virpipe
+  MESA_EXTENSION_MAX_YEAR: "2003"
+  MESA_GLSL_CACHE_DIR: "${GRAPEVINE_HOME}/cache/mesa-shader-cache"
+```
+
+#### 13.5.3 GPU 自动检测与路径推荐
+
+```bash
+# grapevine-core/lib/graphics/detect-gpu.sh
+detect_gpu() {
+    local gpu_type="unknown"
+    local gpu_model="unknown"
+    local recommended_driver="virgl"
+
+    if [ -d "/sys/class/kgsl-3d0" ]; then
+        gpu_type="adreno"
+        recommended_driver="turnip"
+    elif [ -f "/sys/class/gpu/device/of_node/compatible" ]; then
+        local compat=$(cat /sys/class/gpu/device/of_node/compatible 2>/dev/null)
+        if echo "$compat" | grep -qi "mali"; then
+            gpu_type="mali"
+            gpu_model=$(echo "$compat" | grep -oi "mali-[a-z0-9]*" | head -1)
+            case "$gpu_model" in
+                mali-g610|mali-g720|mali-g725)
+                    recommended_driver="panvk"
+                    ;;
+                mali-g710|mali-g57|mali-g68)
+                    recommended_driver="mali-vulkan"
+                    ;;
+                *)
+                    recommended_driver="virgl"
+                    ;;
+            esac
+        fi
+    fi
+
+    echo "{\"type\":\"$gpu_type\",\"model\":\"$gpu_model\",\"recommended_driver\":\"$recommended_driver\"}"
+}
+```
+
+#### 13.5.4 Mali 专用优化配置
+
+```yaml
+# templates/gaming-dx11-mali.yml - Mali GPU 专用 DX11 游戏模板
+container:
+  name: "gaming-dx11-mali"
+  template: "gaming-dx11-mali"
+
+runtime:
+  wine_version: "10.10"
+  box64_version: "0.4.0"
+
+graphics:
+  driver: panvk
+  dxvk_version: "2.4.1"
+  mangohud: true
+
+environment:
+  MESA_VK_WSI_PRESENT_MODE: fifo
+  DXVK_FRAME_RATE: "30"
+  DXVK_STATE_CACHE_PATH: "${GRAPEVINE_HOME}/cache/dxvk-state-cache"
+  dxvk.tilerMode: "True"
+  dxvk.textureMemoryBudget: "512"
+  dxvk.maxAnisotropy: "4"
+  dxvk.enableGraphicsPipelineLibrary: "True"
+  dxvk.numCompilerThreads: "2"
+  dxvk.samplerAnisotropy: "2"
+  dxvk.textureCompression: astc
+
+audio:
+  backend: pulse
+  volume: 80
+
+input:
+  mode: input-bridge
+  gamepad: true
+```
+
+### 13.6 Mali GPU 支持路线图
+
+| 阶段 | 目标 | 方案 | 预计时间 |
+|------|------|------|---------|
+| Phase 1 | Mali 基础可用 | VirGL + WineD3D（复用 Winlator） | MVP |
+| Phase 2 | Mali DX9 游戏可玩 | ARM 闭源 Vulkan + DXVK Tiler 优化 | Phase 1 |
+| Phase 3 | Mali DX11 游戏可玩 | PanVK + DXVK（G610+ 设备） | Phase 2 |
+| Phase 4 | Mali 全面优化 | GPU 自动检测 + 自适应路径 + Mali 专用模板 | Phase 3 |
+
+### 13.7 Mali 支持的差异化价值总结
+
+| 维度 | Winlator CMOD | Grapevine |
+|------|:-:|:-:|
+| Mali GPU 定位 | 二等公民（仅 VirGL） | 一等公民（多路径自适应） |
+| Mali Vulkan 加速 | ❌ 无 | ✅ PanVK / ARM 闭源 Vulkan + DXVK |
+| Mali 专用模板 | ❌ 无 | ✅ gaming-dx11-mali 等 |
+| GPU 自动检测 | ⚠️ 手动选择 | ✅ 自动检测 + 推荐 |
+| Mali 优化配置 | ❌ 无 | ✅ Tiler 模式 / 内存预算 / 帧率限制 |
+| Mali 设备覆盖 | VirGL 通用但低性能 | 分层覆盖，G610+ 可用 Vulkan 加速 |
+
+**结论**：Mali GPU 一等公民支持是 Grapevine 的**第四个核心差异化特性**，且市场价值可能超过快照/CLI/YAML 配置，因为 Mali 设备用户基数巨大，痛点极强，而 Winlator CMOD 短期内不太可能投入大量精力优化 Mali 支持（其核心用户群在 Adreno 设备上）。
+
+---
+
 *文档结束*
