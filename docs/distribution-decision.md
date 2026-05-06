@@ -451,4 +451,312 @@ Winlator 采用 MIT 许可证，这是最宽松的开源许可证之一。Fork W
 
 ---
 
+## 9. AGPL-3.0 合规使用指南
+
+### 9.1 AGPL-3.0 核心义务
+
+AGPL-3.0 在 GPL-3.0 基础上增加了**第 13 条（网络交互条款）**，是当前最强的 Copyleft 协议。其核心义务如下：
+
+| 义务 | 条款 | 说明 |
+|------|------|------|
+| 源码分发 | 第 6 条 | 分发二进制时必须提供完整源码 |
+| 网络源码提供 | 第 13 条 | 用户通过网络与修改版程序交互时，必须向其提供源码 |
+| 修改声明 | 第 5(a) 条 | 修改过的文件必须标注修改说明 |
+| 版权声明保留 | 第 5(a) 条 | 保留所有原始版权声明和许可证文本 |
+| 许可证附加 | 第 5(a) 条 | 分发的所有副本必须附带 AGPL-3.0 许可证文本 |
+| 反附加限制 | 第 7 条 | 不得对用户施加超出 AGPL 的额外限制 |
+| 专利授权 | 第 11 条 | 贡献者自动授予用户专利使用权 |
+
+**对 Grapevine 的影响**：
+
+- Grapevine 作为本地 Android 应用分发，标准源码分发义务适用
+- 如果未来增加云端功能（云容器存储、远程管理等），第 13 条要求向网络用户提供服务端源码
+- AGPL 的传染性意味着：任何与 Grapevine AGPL 代码合并形成衍生作品的代码，也必须以 AGPL 开源
+
+### 9.2 AGPL-3.0 与各组件 License 的兼容性
+
+#### 9.2.1 兼容性判定规则
+
+AGPL-3.0 的兼容性判定遵循以下规则：
+
+1. **宽松型许可证 → AGPL**：✅ 兼容。MIT/BSD/zlib 代码可被 AGPL 吸收，合并后的整体以 AGPL 分发
+2. **LGPL → AGPL**：✅ 兼容。LGPL 库可作为共享库链接，合并后的整体以 AGPL 分发，但 LGPL 部分仍保留 LGPL
+3. **GPL-2.0+ → AGPL**：✅ 兼容。GPL-2.0+ 中的 "+" 表示 "or any later version"，用户可选择以 GPL-3.0 条款使用，而 GPL-3.0 与 AGPL-3.0 兼容
+4. **GPL-3.0 → AGPL**：✅ 兼容。GPL-3.0 代码可合并入 AGPL-3.0 作品，整体以 AGPL 分发
+5. **GPL-2.0-only → AGPL**：❌ 不兼容。GPL-2.0-only 不允许升级到 GPL-3.0/AGPL-3.0
+6. **Apache-2.0 → AGPL**：❌ 不兼容。Apache-2.0 的专利条款与 GPL-2.0 冲突，但与 GPL-3.0/AGPL-3.0 兼容（GPL-3.0 已修复此冲突）
+
+**修正**：Apache-2.0 与 AGPL-3.0 实际上是兼容的，因为 AGPL-3.0 基于 GPL-3.0，而 GPL-3.0 明确与 Apache-2.0 兼容。
+
+#### 9.2.2 Grapevine 各组件与 AGPL-3.0 的兼容性
+
+| 组件 | License | 与 AGPL 兼容 | 原因 |
+|------|---------|:-:|------|
+| Winlator | MIT | ✅ | 宽松型，可被 AGPL 吸收 |
+| Box86/64 | MIT | ✅ | 宽松型，可被 AGPL 吸收 |
+| Wine | LGPL-2.1+ | ✅ | 弱 Copyleft，允许作为共享库链接 |
+| Proton 核心 | BSD-3-Clause | ✅ | 宽松型，可被 AGPL 吸收 |
+| PRoot | GPL-2.0+ | ✅ | "or later" 允许升级到 GPL-3.0/AGPL-3.0 |
+| Mesa | MIT / SGI-B-2.0 | ✅ | 宽松型，可被 AGPL 吸收 |
+| DXVK | zlib | ✅ | 宽松型，可被 AGPL 吸收 |
+| VKD3D-Proton | LGPL-2.1+ / MIT | ✅ | 弱 Copyleft + 宽松型 |
+| FEX-Emu | MIT | ✅ | 宽松型，可被 AGPL 吸收 |
+| Xlorie | GPL-3.0 | ✅ | GPL-3.0 与 AGPL-3.0 兼容 |
+| Termux 终端 UI | GPL-3.0 | ✅ | GPL-3.0 与 AGPL-3.0 兼容 |
+| Termux 终端 View | GPL-3.0 | ✅ | GPL-3.0 与 AGPL-3.0 兼容 |
+| glibc | LGPL-2.1+ | ✅ | 弱 Copyleft，允许作为共享库链接 |
+| android_alsa | MIT | ✅ | 宽松型，可被 AGPL 吸收 |
+| android_sysvshm | MIT | ✅ | 宽松型，可被 AGPL 吸收 |
+| Ubuntu RootFS | 多种 | ⚠️ | RootFS 中的各软件包有各自 License，需逐一检查 |
+
+**结论**：Grapevine 使用的所有核心组件均与 AGPL-3.0 兼容。不存在 License 不可逾越的冲突。
+
+### 9.3 关键概念：衍生作品 vs 聚合
+
+AGPL-3.0 的传染性仅作用于**衍生作品**（derivative work），不作用于**聚合**（aggregate）。这是合规架构设计的核心依据。
+
+#### 9.3.1 判定标准
+
+```
+衍生作品（传染）                    聚合（不传染）
+┌─────────────────────┐          ┌─────────────────────┐
+│  程序 A (AGPL)       │          │  介质 (APK/ISO)      │
+│  ┌─────────────────┐│          │  ┌─────────────────┐│
+│  │ 程序 B (GPL)     ││          │  │ 程序 A (AGPL)   ││
+│  │ (链接/嵌入)      ││          │  │ (独立进程)      ││
+│  └─────────────────┘│          │  ├─────────────────┤│
+│  A 和 B 形成单一作品  │          │  │ 程序 B (GPL)    ││
+│  → 整体必须 AGPL     │          │  │ (独立进程)      ││
+└─────────────────────┘          │  └─────────────────┘│
+                                  │  A 和 B 是独立程序  ││
+                                  │  → 各自保留原 License││
+                                  └─────────────────────┘
+```
+
+**判定要素**：
+
+| 链接方式 | 是否衍生作品 | AGPL 传染 |
+|---------|:-:|:-:|
+| 静态链接 | ✅ 是 | ✅ 传染 |
+| JNI 调用 | ✅ 是 | ✅ 传染 |
+| 动态链接 (.so) | ⚠️ 有争议 | ⚠️ 可能传染 |
+| 管道/IPC 通信 | ❌ 否 | ❌ 不传染 |
+| Runtime.exec() 进程调用 | ❌ 否 | ❌ 不传染 |
+| 独立二进制在 rootfs 中共存 | ❌ 否 | ❌ 不传染 |
+
+**AGPL 第 5 条的说明**：
+
+> "The output from running a covered work is covered by this License only if the output, given its content, constitutes a covered work."
+
+这意味着：Grapevine (AGPL) 调用 PRoot (GPL) 作为独立进程，PRoot 的输出不属于 Grapevine 的衍生作品。
+
+### 9.4 各组件的正确使用方式
+
+#### 9.4.1 进程隔离方式使用的组件（不触发 AGPL 传染）
+
+这些组件作为独立进程运行，与 Grapevine 主程序通过 IPC/管道/命令行通信，不构成衍生作品：
+
+| 组件 | License | 使用方式 | 合规要求 |
+|------|---------|---------|----------|
+| PRoot | GPL-2.0+ | `Runtime.exec("proot ...")` 进程调用 | ① 保留版权声明 ② 提供 PRoot 源码获取途径 ③ 不修改 PRoot 源码或修改后以 GPL 开源 |
+| Xlorie | GPL-3.0 | 作为 rootfs 中的独立二进制运行 | ① 保留版权声明 ② 提供 Xlorie 源码获取途径 ③ 不修改或修改后以 GPL-3.0 开源 |
+| Wine | LGPL-2.1+ | 作为 rootfs 中的独立二进制运行 | ① 保留版权声明 ② 提供 Wine 源码获取途径 ③ 允许用户替换 Wine 版本 |
+| Box86/64 | MIT | 作为 rootfs 中的独立二进制运行 | ① 保留版权声明 |
+| DXVK | zlib | 作为 rootfs 中的独立 DLL 运行 | ① 保留版权声明 |
+| Mesa 驱动 | MIT | 作为 rootfs 中的独立共享库运行 | ① 保留版权声明 |
+| FEX | MIT | 作为 rootfs 中的独立二进制运行（Phase 3） | ① 保留版权声明 |
+| Proton | BSD+LGPL | 作为 rootfs 中的独立二进制运行（Phase 2） | ① 保留版权声明 ② Proton Wine 部分遵守 LGPL |
+| glibc | LGPL-2.1+ | 作为 rootfs 中的共享库运行 | ① 保留版权声明 ② 不修改 glibc 源码 |
+
+**进程隔离的技术实现**：
+
+```java
+// Java 层：通过进程调用 PRoot，不触发 AGPL 传染
+Process process = Runtime.getRuntime().exec(
+    "proot --rootfs=/data/.../rootfs " +
+    "--bind=/data/.../wine " +
+    "/bin/wine wineboot"
+);
+// 通过 stdin/stdout 通信，不共享内存，不使用 JNI
+```
+
+```bash
+# Shell 层：grapevine-core 调用 PRoot
+proot --rootfs="${GRAPEVINE_HOME}/rootfs" \
+      --bind="${GRAPEVINE_HOME}/wine" \
+      --bind="${GRAPEVINE_HOME}/box64" \
+      /bin/wine wineboot
+```
+
+#### 9.4.2 链接方式使用的组件（触发 AGPL 传染）
+
+这些组件通过 JNI 或动态链接与 Grapevine 主程序合并，构成衍生作品，整体以 AGPL 开源：
+
+| 组件 | License | 使用方式 | 合规要求 |
+|------|---------|---------|----------|
+| Winlator 代码 (MIT) | MIT | Fork 并修改 Java/C 代码 | ① 保留 BrunoSX 版权声明 ② 修改后的代码以 AGPL 开源 |
+| android_alsa (MIT) | MIT | 作为 JNI 库编译进 APK | ① 保留版权声明 ② 以 AGPL 开源 |
+| android_sysvshm (MIT) | MIT | 作为 JNI 库编译进 APK | ① 保留版权声明 ② 以 AGPL 开源 |
+| Grapevine 自研代码 | AGPL-3.0 | Java/Kotlin GUI + Shell 脚本 | 以 AGPL-3.0 开源 |
+
+**注意**：由于 Winlator、android_alsa、android_sysvshm 均为 MIT 许可证，Grapevine 可以自由地将其代码合并到 AGPL 项目中。MIT 代码在 AGPL 项目中仍保留 MIT 许可证，但整体作品以 AGPL 分发。
+
+#### 9.4.3 Termux 终端 UI 组件的特殊处理
+
+Termux 的 `terminal-emulator` 和 `terminal-view` 采用 GPL-3.0 许可证。如果 Grapevine 希望内嵌这些组件，有两种合规方式：
+
+**方式一：进程隔离（推荐）**
+
+不内嵌 Termux 终端 UI，改用自研终端模拟器或完全使用原生 Android GUI。这样完全避免 GPL-3.0 传染问题。
+
+**方式二：AGPL 合并**
+
+由于 GPL-3.0 与 AGPL-3.0 兼容，可以将 Termux 终端 UI 代码合并到 Grapevine 中，整体以 AGPL-3.0 分发。但需要：
+1. 保留 Termux 原始版权声明
+2. 提供 Termux 终端 UI 源码获取途径
+3. 标注对 Termux 代码的修改内容
+
+**方式三：独立 Activity 调用**
+
+将 Termux 终端 UI 编译为独立 APK 或独立模块，通过 Android Intent 启动。这种方式类似于进程隔离，不构成衍生作品。
+
+### 9.5 项目目录结构与 License 标注
+
+```
+grapevine/                           # AGPL-3.0 (Grapevine 自研代码)
+├── LICENSE                          # AGPL-3.0 全文
+├── NOTICE                           # 第三方组件版权声明汇总
+├── app/
+│   ├── src/main/java/               # AGPL-3.0 (Grapevine 自研)
+│   ├── src/main/cpp/
+│   │   ├── proot/                   # GPL-2.0+ (进程调用，不链接)
+│   │   │   └── LICENSE              # PRoot GPL-2.0+ 许可证
+│   │   ├── xlorie/                  # GPL-3.0 (进程调用，不链接)
+│   │   │   └── LICENSE              # Xlorie GPL-3.0 许可证
+│   │   └── grapevine_jni/           # AGPL-3.0 (Grapevine 自研)
+│   └── assets/
+│       └── licenses/                # 所有第三方许可证文本
+│           ├── LICENSE.winlator     # MIT
+│           ├── LICENSE.box86        # MIT
+│           ├── LICENSE.box64        # MIT
+│           ├── LICENSE.wine         # LGPL-2.1+
+│           ├── LICENSE.proton       # BSD-3-Clause + LGPL
+│           ├── LICENSE.proot        # GPL-2.0+
+│           ├── LICENSE.mesa         # MIT / SGI-B-2.0
+│           ├── LICENSE.dxvk         # zlib
+│           ├── LICENSE.vkd3d-proton # LGPL-2.1+ / MIT
+│           ├── LICENSE.fex          # MIT
+│           ├── LICENSE.xlorie       # GPL-3.0
+│           ├── LICENSE.glibc        # LGPL-2.1+
+│           └── LICENSE.ubuntu       # 多种
+├── android_alsa/                    # MIT (Winlator 原始代码)
+│   └── LICENSE                      # MIT 许可证 + BrunoSX 版权声明
+├── android_sysvshm/                 # MIT (Winlator 原始代码)
+│   └── LICENSE                      # MIT 许可证 + BrunoSX 版权声明
+├── grapevine-core/                  # AGPL-3.0 (Grapevine 自研)
+├── bootstrap/
+│   └── rootfs/                      # 各组件保留各自 License
+│       ├── usr/bin/wine             # LGPL-2.1+
+│       ├── usr/bin/proot            # GPL-2.0+
+│       ├── usr/lib/libGL.so         # MIT (Mesa)
+│       └── ...
+├── patches/                         # 对第三方组件的补丁
+│   ├── wine/                        # Wine 补丁 (LGPL-2.1+)
+│   ├── proot/                       # PRoot 补丁 (GPL-2.0+)
+│   └── xlorie/                      # Xlorie 补丁 (GPL-3.0)
+└── THIRD_PARTY_NOTICES.md           # 第三方组件声明文档
+```
+
+### 9.6 AGPL-3.0 合规操作清单
+
+#### 9.6.1 源码分发义务
+
+| 场景 | 义务 | 实现方式 |
+|------|------|----------|
+| APK 分发 | 提供完整源码 | GitHub 公开仓库，APK 内 about 页面提供链接 |
+| 修改 AGPL 代码 | 标注修改 | 修改文件头部添加 `Modified by Grapevine - <date> - <description>` |
+| 修改 GPL/LGPL 代码 | 补丁以原 License 开源 | `patches/` 目录存放补丁文件，以原组件 License 发布 |
+| 网络交互（未来） | 向网络用户提供源码 | 如增加云端功能，服务端代码必须公开 |
+
+#### 9.6.2 版权声明义务
+
+每个源文件头部应包含如下声明：
+
+**Grapevine 自研文件**：
+```
+Copyright (C) 2026 Grapevine Contributors
+SPDX-License-Identifier: AGPL-3.0-or-later
+```
+
+**基于 Winlator 修改的文件**：
+```
+Copyright (c) 2023 BrunoSX (original Winlator code)
+Copyright (C) 2026 Grapevine Contributors (modifications)
+SPDX-License-Identifier: AGPL-3.0-or-later
+Original source: https://github.com/brunodev85/winlator
+```
+
+**未修改的第三方文件**：保留原始版权声明和 License 头部，不做任何修改。
+
+#### 9.6.3 用户权利保障
+
+| 用户权利 | AGPL 要求 | Grapevine 实现 |
+|---------|----------|---------------|
+| 获取源码 | 分发二进制时必须提供源码 | GitHub 仓库 + APK 内链接 |
+| 修改和再分发 | 允许用户修改和再分发 | AGPL 天然允许 |
+| 替换 LGPL 组件 | 用户必须能替换 LGPL 库版本 | 组件管理器支持 Wine/glibc 版本切换 |
+| 网络使用获取源码 | 网络交互用户也有权获取源码 | APK 内 about 页面提供源码链接 |
+| 查看完整许可证 | 必须提供 AGPL 全文 | APK 内 assets/licenses/ 存放 |
+
+#### 9.6.4 NOTICE 文件模板
+
+```
+Grapevine - Windows 兼容容器管理平台
+Copyright (C) 2026 Grapevine Contributors
+
+本程序是自由软件：您可以根据自由软件基金会发布的 GNU Affero 通用公共许可证
+（版本 3 或更高版本）的条款重新分发和/或修改它。
+
+本程序分发的目的是希望它有用，但没有任何保证；甚至没有对适销性或特定用途适
+用性的暗示保证。有关更多详细信息，请参阅 GNU Affero 通用公共许可证。
+
+您应该已经随本程序收到了 GNU Affero 通用公共许可证的副本。如果没有，请参阅
+<https://www.gnu.org/licenses/>。
+
+---
+
+本软件包含以下第三方开源组件：
+
+1. Winlator - Copyright (c) 2023 BrunoSX - MIT License
+2. Box86 - Copyright (C) ptitSeb - MIT License
+3. Box64 - Copyright (C) ptitSeb - MIT License
+4. Wine - Copyright (C) Wine Project authors - LGPL-2.1+
+5. Proton - Copyright (C) Valve Corporation - BSD-3-Clause / LGPL-2.1+
+6. PRoot - Copyright (C) STMicroelectronics - GPL-2.0+
+7. Mesa 3D - Copyright (C) Mesa project contributors - MIT / SGI-B-2.0
+8. DXVK - Copyright (C) Philip Rebohle - zlib License
+9. VKD3D-Proton - Copyright (C) Hans-Kristian Arntzen - LGPL-2.1+ / MIT
+10. FEX-Emu - Copyright (C) FEX-Emu contributors - MIT License
+11. Xlorie - Copyright (C) Termux contributors - GPL-3.0
+12. glibc - Copyright (C) Free Software Foundation - LGPL-2.1+
+13. Ubuntu RootFS - Copyright (C) Canonical Ltd. - Various licenses
+
+各组件的完整许可证文本可在应用的"关于"页面或 assets/licenses/ 目录中找到。
+各组件的源代码可从其上游仓库获取，具体链接见 THIRD_PARTY_NOTICES.md。
+```
+
+### 9.7 常见合规陷阱与规避
+
+| 陷阱 | 后果 | 规避方式 |
+|------|------|----------|
+| 将 PRoot 代码编译进 JNI 库 | 整个 APK 必须以 GPL-2.0+ 开源 | 通过 `Runtime.exec()` 进程调用 |
+| 将 Xlorie 静态链接进 APK | 整个 APK 必须以 GPL-3.0 开源 | 作为 rootfs 中的独立二进制 |
+| 修改 Wine 但不开源补丁 | 违反 LGPL，授权终止 | 补丁放入 `patches/` 目录以 LGPL 发布 |
+| 删除 MIT/BSD 组件的版权声明 | 违反许可证，授权终止 | NOTICE 文件 + assets/licenses/ 完整保留 |
+| 使用 GPL-2.0-only 代码 | 与 AGPL 不兼容，无法合并 | 不使用任何 GPL-2.0-only 组件 |
+| 未来增加闭源云服务 | 违反 AGPL 第 13 条 | 云服务端代码也必须以 AGPL 开源 |
+| 不提供源码获取途径 | 违反 AGPL 第 6 条 | GitHub 公开仓库 + APK 内链接 |
+
+---
+
 *文档结束*
